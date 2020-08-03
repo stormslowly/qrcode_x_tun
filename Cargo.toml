@@ -1,0 +1,24 @@
+[package]
+name = "qtrust"
+version = "0.1.0"
+authors = ["pshu <pishu.spf@antfin.com>"]
+description = "TUN/TAP interface wrapper"
+documentation = "https://docs.rs/tun-tap"
+
+
+[features]
+default = ["tokio"]
+tokio = ["futures", "libc", "mio", "tokio-core"]
+
+[build-dependencies]
+cc = "~1"
+
+[dependencies]
+mac_utun = "0.6"
+futures = { version = "~0.1", optional = true }
+libc = { version = "~0.2", optional = true }
+mio = { version = "~0.6", optional = true }
+tokio-core = { version = "~0.1", optional = true }
+
+[dev-dependencies]
+version-sync = "~0.5"
