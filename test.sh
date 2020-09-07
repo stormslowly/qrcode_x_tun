@@ -2,11 +2,15 @@
 
 cargo build
 
-./target/debug/qtrust &
+sudo ./target/debug/qtrust&
 pid=$!
-trap "kill $pid" INT TERM
+
+
+sleep 3s
+
+sudo ifconfig utun2 inet 10.0.0.1 10.0.0.2 up
+
+echo "tun is up"
+
+trap "sudo kill $pid" INT TERM
 wait $pid
-
-ifconfig utun1 
-
-
