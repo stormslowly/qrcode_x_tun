@@ -1,6 +1,3 @@
-// use tun_tap_mac;
-
-
 extern crate mac_utun;
 extern crate etherparse;
 extern crate packet;
@@ -8,7 +5,18 @@ extern crate packet;
 
 use mac_utun::get_utun;
 use etherparse::{SlicedPacket, PacketBuilder, Ipv4HeaderSlice};
-use packet::{Builder, Packet};
+use packet::{Builder, Packet, AsPacket};
+use std::any::Any;
+use std::process::Command;
+
+
+fn display_bytes(bytes: &[u8]) -> () {
+  println!("{:04} bytes", bytes.len());
+  for byte in bytes {
+    print!("{:02x} ", byte);
+  }
+  println!("");
+}
 
 fn main() -> std::io::Result<()> {
   let mut buf = vec![0u8; 5000];
@@ -17,24 +25,23 @@ fn main() -> std::io::Result<()> {
 
   println!("{}", tun_name);
 
+  println!("ifconfig {tun} inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0", tun = tun_name);
+
+  let cmd = format!("ifconfig {tun} inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0", tun = tun_name);
+
+  Command::new("ifconfig")
+    .arg(tun_name)
+    .args(String::from("inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0").split(" "))
+    .spawn()?;
 
   loop {
     let n = df.recv(&mut buf[..])?;
 
     println!("{:?} bytes got", n);
 
+    display_bytes(&buf[0..n]);
 
-    for n in &buf[0..n] {
-      print!("{:02x} ", n);
-    };
-
-    println!("");
-
-    // println!("{:?}", &buf[0..n]);
-
-
-    let ingreessIp = packet::ip::Packet::new(&buf[4..n]).unwrap();
-
+    // 4 is skip the frame number 00 00 00 02
     match Ipv4HeaderSlice::from_slice(&buf[4..n]) {
       Ok(p) => {
         println!("{:?}", p);
@@ -47,43 +54,58 @@ fn main() -> std::io::Result<()> {
         );
 
 
-        let parsed = packet::icmp::Packet::new(&buf[23..n]).unwrap();
-
-        println!("{:?}", parsed);
-
-        let toSend = packet::icmp::Builder::default()
-          .echo().unwrap()
-          .reply().unwrap()
-          .payload(parsed.payload()).unwrap()
-          .build().unwrap();
+        let icmp = packet::icmp::Packet::new(&buf[23..n]).unwrap();
+        let ip = packet::ip::v4::Packet::new(&buf[4..n]).unwrap();
 
 
-        let  ipPacket = packet::ip::Builder::default()
-          .v4().unwrap()
-          .source(ingreessIp.)
-          .payload(toSend).unwrap()
+        // println!("icmp {:#?}", icmp);
+        // println!("theip {:#?}", ip);
+        //
+        // let mut packet = packet::ip::v4::Builder::default()
+        //   .id(ip.id()).unwrap()
+        //   .ttl(64).unwrap()
+        //   .source("10.0.1.2".parse().unwrap()).unwrap()
+        //   .destination("10.0.1.1".parse().unwrap()).unwrap()
+        //   .icmp().unwrap()
+        //   .echo().unwrap().reply().unwrap()
+        //   .identifier(1).unwrap()
+        //   .sequence(icmp.sequnce()).unwrap()
+        //   .payload(icmp.payload()).unwrap()
+        //   .build().unwrap();
+        //
+        //
+        // let mut header = vec!(00u8, 00u8, 00u8, 02u8);
+        //
+        // header.append(&mut packet);
 
 
-        for n in toSend {
+        buf[19] = 0x02;
+        buf[23] = 0x01;
+
+        buf[24] = 0x00;
+        buf[26] = buf[26].wrapping_add(8);
+
+        println!("back ip");
+        for n in &buf[0..n] {
           print!("{:02x} ", n);
         };
+        //
+        // println!("");
+        // for n in &header[0..n] {
+        //   print!("{:02x} ", n);
+        // };
 
-        println!("")
+
+        println!("");
 
 
+        let sendn = df.send(&buf[0..n])?;
 
-
-
-        // PacketBuilder::ipv4()
+        println!("{} nbyte send back", sendn);
       }
       Err(e) => {
         println!("{:?} error", e);
       }
     }
-
-
-    let sendn = df.send(&buf[0..n])?;
-
-    println!("{} nbyte send back", sendn);
   }
 }
