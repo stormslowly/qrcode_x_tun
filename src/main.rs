@@ -9,7 +9,6 @@ use packet::{Builder, Packet, AsPacket};
 use std::any::Any;
 use std::process::Command;
 
-
 fn display_bytes(bytes: &[u8]) -> () {
   println!("{:04} bytes", bytes.len());
   for byte in bytes {
@@ -18,34 +17,38 @@ fn display_bytes(bytes: &[u8]) -> () {
   println!("");
 }
 
+fn clear_screen() {
+  print!("\x1B[2J\x1B[1;1H");
+}
+
+fn show_as_qrcode(bytes: &[u8]) -> () {
+  qr2term::print_qr(bytes).unwrap();
+}
+
 fn main() -> std::io::Result<()> {
   let mut buf = vec![0u8; 5000];
 
   let (df, tun_name) = get_utun()?;
 
-  println!("{}", tun_name);
-
-  println!("ifconfig {tun} inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0", tun = tun_name);
-
-  let cmd = format!("ifconfig {tun} inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0", tun = tun_name);
+  format!("ifconfig {tun} inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0", tun = tun_name);
 
   Command::new("ifconfig")
-    .arg(tun_name)
+    .arg(&tun_name)
     .args(String::from("inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0").split(" "))
     .spawn()?;
 
+  println!("{} is ready ", &tun_name);
   loop {
     let n = df.recv(&mut buf[..])?;
 
-    println!("{:?} bytes got", n);
-
+    clear_screen();
+    println!("==>");
     display_bytes(&buf[0..n]);
+    show_as_qrcode(&buf[0..n]);
 
     // 4 is skip the frame number 00 00 00 02
     match Ipv4HeaderSlice::from_slice(&buf[4..n]) {
       Ok(p) => {
-        println!("{:?}", p);
-
         println!("source {source} -> to {to} [{protocol}] len {len}, ttl {ttl}",
                  source = p.source_addr(), to = p.destination_addr(),
                  protocol = p.protocol(),
@@ -59,8 +62,7 @@ fn main() -> std::io::Result<()> {
 
 
         // println!("icmp {:#?}", icmp);
-        // println!("theip {:#?}", ip);
-        //
+
         // let mut packet = packet::ip::v4::Builder::default()
         //   .id(ip.id()).unwrap()
         //   .ttl(64).unwrap()
@@ -85,23 +87,10 @@ fn main() -> std::io::Result<()> {
         buf[24] = 0x00;
         buf[26] = buf[26].wrapping_add(8);
 
-        println!("back ip");
-        for n in &buf[0..n] {
-          print!("{:02x} ", n);
-        };
-        //
-        // println!("");
-        // for n in &header[0..n] {
-        //   print!("{:02x} ", n);
-        // };
+        println!("<==");
+        display_bytes(&buf[0..n]);
 
-
-        println!("");
-
-
-        let sendn = df.send(&buf[0..n])?;
-
-        println!("{} nbyte send back", sendn);
+        df.send(&buf[0..n])?;
       }
       Err(e) => {
         println!("{:?} error", e);
@@ -109,3 +98,4 @@ fn main() -> std::io::Result<()> {
     }
   }
 }
+
