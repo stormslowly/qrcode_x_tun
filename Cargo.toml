@@ -21,6 +21,7 @@ mio = { version = "~0.6", optional = true }
 tokio-core = { version = "~0.1", optional = true }
 etherparse = "0.9.0"
 packet = "0.1"
+qr2term = "0.2.1"
 
 
 
