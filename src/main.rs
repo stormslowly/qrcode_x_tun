@@ -1,6 +1,7 @@
 extern crate mac_utun;
 extern crate etherparse;
 extern crate packet;
+extern crate opencv;
 
 
 use mac_utun::get_utun;
@@ -8,94 +9,112 @@ use etherparse::{SlicedPacket, PacketBuilder, Ipv4HeaderSlice};
 use packet::{Builder, Packet, AsPacket};
 use std::any::Any;
 use std::process::Command;
+// use bardecoder;
+
+use opencv::{
+    core,
+    highgui,
+    prelude::*,
+    videoio,
+};
+
+fn run() -> opencv::Result<()> {
+    let window = "video capture";
+    highgui::named_window(window, 1)?;
+    let mut cam = videoio::VideoCapture::new(0, videoio::CAP_ANY)?;  // 0 is the default camera
+    let opened = videoio::VideoCapture::is_opened(&cam)?;
+    if !opened {
+        panic!("Unable to open default camera!");
+    }
+
+    let decoder = bardecoder::default_decoder();
+
+    loop {
+        let mut frame = core::Mat::default()?;
+        cam.read(&mut frame)?;
+        if frame.size()?.width > 0 {
+            highgui::imshow(window, &mut frame)?;
+            print!("{:?}\n", frame);
+        }
+        let key = highgui::wait_key(10)?;
+        if key > 0 && key != 255 {
+            break;
+        }
+    }
+    Ok(())
+}
 
 fn display_bytes(bytes: &[u8]) -> () {
-  println!("{:04} bytes", bytes.len());
-  for byte in bytes {
-    print!("{:02x} ", byte);
-  }
-  println!("");
+    println!("{:04} bytes", bytes.len());
+    for byte in bytes {
+        print!("{:02x} ", byte);
+    }
+    println!("");
 }
 
 fn clear_screen() {
-  print!("\x1B[2J\x1B[1;1H");
+    print!("\x1B[2J\x1B[1;1H");
 }
 
 fn show_as_qrcode(bytes: &[u8]) -> () {
-  qr2term::print_qr(bytes).unwrap();
+    qr2term::print_qr(bytes).unwrap();
 }
 
-fn main() -> std::io::Result<()> {
-  let mut buf = vec![0u8; 5000];
+fn main() {
+    run().unwrap();
+}
 
-  let (df, tun_name) = get_utun()?;
-
-  format!("ifconfig {tun} inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0", tun = tun_name);
-
-  Command::new("ifconfig")
-    .arg(&tun_name)
-    .args(String::from("inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0").split(" "))
-    .spawn()?;
-
-  println!("{} is ready ", &tun_name);
-  loop {
-    let n = df.recv(&mut buf[..])?;
-
-    clear_screen();
-    println!("==>");
-    display_bytes(&buf[0..n]);
-    show_as_qrcode(&buf[0..n]);
-
-    // 4 is skip the frame number 00 00 00 02
-    match Ipv4HeaderSlice::from_slice(&buf[4..n]) {
-      Ok(p) => {
-        println!("source {source} -> to {to} [{protocol}] len {len}, ttl {ttl}",
-                 source = p.source_addr(), to = p.destination_addr(),
-                 protocol = p.protocol(),
-                 len = p.payload_len(),
-                 ttl = p.ttl()
-        );
+fn main_1() -> std::io::Result<()> {
+    let mut buf = vec![0u8; 5000];
 
 
-        let icmp = packet::icmp::Packet::new(&buf[23..n]).unwrap();
-        let ip = packet::ip::v4::Packet::new(&buf[4..n]).unwrap();
+    let (df, tun_name) = get_utun()?;
 
+    format!("ifconfig {tun} inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0", tun = tun_name);
 
-        // println!("icmp {:#?}", icmp);
+    Command::new("ifconfig")
+        .arg(&tun_name)
+        .args(String::from("inet 10.0.1.1 10.0.1.2 up netmask 255.255.255.0").split(" "))
+        .spawn()?;
 
-        // let mut packet = packet::ip::v4::Builder::default()
-        //   .id(ip.id()).unwrap()
-        //   .ttl(64).unwrap()
-        //   .source("10.0.1.2".parse().unwrap()).unwrap()
-        //   .destination("10.0.1.1".parse().unwrap()).unwrap()
-        //   .icmp().unwrap()
-        //   .echo().unwrap().reply().unwrap()
-        //   .identifier(1).unwrap()
-        //   .sequence(icmp.sequnce()).unwrap()
-        //   .payload(icmp.payload()).unwrap()
-        //   .build().unwrap();
-        //
-        //
-        // let mut header = vec!(00u8, 00u8, 00u8, 02u8);
-        //
-        // header.append(&mut packet);
+    println!("{} is ready ", &tun_name);
+    loop {
+        let n = df.recv(&mut buf[..])?;
 
-
-        buf[19] = 0x02;
-        buf[23] = 0x01;
-
-        buf[24] = 0x00;
-        buf[26] = buf[26].wrapping_add(8);
-
-        println!("<==");
+        clear_screen();
+        println!("==>");
         display_bytes(&buf[0..n]);
+        show_as_qrcode(&buf[0..n]);
 
-        df.send(&buf[0..n])?;
-      }
-      Err(e) => {
-        println!("{:?} error", e);
-      }
+        // 4 is skip the frame number 00 00 00 02
+        match Ipv4HeaderSlice::from_slice(&buf[4..n]) {
+            Ok(p) => {
+                println!("source {source} -> to {to} [{protocol}] len {len}, ttl {ttl}",
+                         source = p.source_addr(), to = p.destination_addr(),
+                         protocol = p.protocol(),
+                         len = p.payload_len(),
+                         ttl = p.ttl()
+                );
+
+
+                let icmp = packet::icmp::Packet::new(&buf[23..n]).unwrap();
+                let ip = packet::ip::v4::Packet::new(&buf[4..n]).unwrap();
+
+                buf[19] = 0x02;
+                buf[23] = 0x01;
+
+                buf[24] = 0x00;
+                buf[26] = buf[26].wrapping_add(8);
+
+                println!("<==");
+                display_bytes(&buf[0..n]);
+
+                df.send(&buf[0..n])?;
+            }
+            Err(e) => {
+                println!("{:?} error", e);
+            }
+        }
     }
-  }
 }
 
