@@ -3,6 +3,7 @@ extern crate etherparse;
 extern crate packet;
 extern crate opencv;
 extern crate image;
+extern crate bardecoder;
 
 
 use mac_utun::get_utun;
@@ -18,8 +19,11 @@ use opencv::{
   prelude::*,
   videoio,
 };
-use image::ImageBuffer;
+use image::{ImageBuffer, DynamicImage, FilterType};
 use opencv::core::{CV_8UC3, Vec3};
+use std::ops::Deref;
+use bardecoder::decode::Decode;
+use bardecoder::prepare::BlockedMean;
 
 fn run() -> opencv::Result<()> {
   let window = "video capture";
@@ -37,30 +41,34 @@ fn run() -> opencv::Result<()> {
     cam.read(&mut frame)?;
     if frame.size()?.width > 0 {
       highgui::imshow(window, &mut frame)?;
-      print!("{:?}\n", frame);
 
-      let width = frame.size()?.width as u32;//u32::try_from(frame.size()?.width)?;
+      let width = frame.size()?.width as u32;
       let height = frame.size()?.height as u32;
 
 
       println!("{w} {h}", w = width, h = height);
 
-
-      let x = frame.at_2d::<Vec3<u8>>(0, 0).unwrap();
-
-      println!("{:?}", x);
-
-
-      let fm = ImageBuffer::from_fn(width, height,
+      let fm = ImageBuffer::from_fn(640, 360,
                                     |c, r| {
-                                      let v3u = frame.at_2d::<Vec3<u8>>(c as i32, r as i32).unwrap();
+                                      let v3u: &Vec3<u8> = frame.at_2d((r * 2) as i32, (c * 2) as i32).unwrap();
 
-                                      image::Luma
+                                      let vec = v3u.deref().to_vec();
+
+                                      let r = vec.get(0).unwrap();
+                                      let g = vec.get(1).unwrap();
+                                      let b = vec.get(2).unwrap();
+
+                                      image::Rgb([*g, *g, *g])
                                     },
       );
 
+      let dynamicImage = DynamicImage::ImageRgb8(fm);
 
-      fm?.save("./test.png")?;
+      let r = decoder.decode(&dynamicImage);
+
+      println!("{:?}", r);
+
+      dynamicImage.save("./test.png");
     }
     let key = highgui::wait_key(10)?;
     if key > 0 && key != 255 {
@@ -87,7 +95,27 @@ fn show_as_qrcode(bytes: &[u8]) -> () {
 }
 
 fn main() {
-  run().unwrap();
+  let img = image::open("./test.jpg").unwrap();
+
+  // Use default decoder
+  let mut dd = bardecoder::default_builder();
+
+  // Use some different arguments in one of the default components
+  dd.prepare(Box::new(BlockedMean::new(9, 50)));
+
+  // Build the actual decoder
+  let decoder = dd.build();
+
+
+  let results = decoder.decode(&img);
+  println!("{:?}", results);
+
+
+  for result in results {
+    println!("{}", result.unwrap());
+  }
+
+  // run().unwrap();
 }
 
 fn main_1() -> std::io::Result<()> {
