@@ -25,6 +25,7 @@ qr2term = "0.2.1"
 opencv = {version = "0.43", default-features = false, features = ["opencv-34","buildtime-bindgen"]}
 bardecoder = "0.2.2"
 image = "0.22"
+quirs = {path="../quirs", version="0.1.1"}
 
 
 
